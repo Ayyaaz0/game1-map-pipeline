@@ -1,126 +1,121 @@
 from pathlib import Path
 import csv
 
-INPUT_CSV = Path("assets/maps/room0.csv")
-OUTPUT_DIR = Path("build")
-
+# --- Configuration ---
 MAP_NAME = "room0"
-C_ARRAY_NAME = "room0_data"
 WIDTH = 30
 HEIGHT = 30
+EMPTY_TILE_ID = -1
+BACKGROUND_TILE_ID = 0
+
+# --- Paths ---
+INPUT_CSV = Path("assets/maps/room0.csv")
+OUTPUT_DIR = Path("build")
+HEADER_FILE = OUTPUT_DIR / f"{MAP_NAME}.h"
+SOURCE_FILE = OUTPUT_DIR / f"{MAP_NAME}.c"
 
 
-def load_csv(path):
-    rows = []
+def load_and_convert_csv(path: Path) -> list[int]:
+    """Read CSV, convert empty tiles, and return a flat list of tile IDs."""
+    flat_data: list[int] = []
 
-    with open(path, newline="") as file:
+    with path.open(newline="", encoding="utf-8") as file:
         reader = csv.reader(file)
 
-        for row in reader:
-            cleaned_row = []
+        for row_index, row in enumerate(reader):
+            cleaned_row: list[int] = []
 
             for value in row:
                 value = value.strip()
 
-                if value == "":
+                if not value:
                     continue
 
                 tile_id = int(value)
+                cleaned_row.append(
+                    BACKGROUND_TILE_ID if tile_id == EMPTY_TILE_ID else tile_id
+                )
 
-                # Tiled empty cell.
-                # Store as 0 so it can mean "empty / black tile" in C.
-                if tile_id == -1:
-                    tile_id = 0
+            if not cleaned_row:
+                continue
 
-                cleaned_row.append(tile_id)
+            if len(cleaned_row) != WIDTH:
+                raise ValueError(
+                    f"Row {row_index} has {len(cleaned_row)} tiles; expected {WIDTH}."
+                )
 
-            if cleaned_row:
-                rows.append(cleaned_row)
-
-    return rows
-
-
-def flatten(rows):
-    return [tile for row in rows for tile in row]
-
-
-def validate_map(rows):
-    if len(rows) != HEIGHT:
-        raise ValueError(f"Expected {HEIGHT} rows, got {len(rows)} rows.")
-
-    for row_index, row in enumerate(rows):
-        if len(row) != WIDTH:
-            raise ValueError(
-                f"Row {row_index} has {len(row)} tiles, expected {WIDTH}."
-            )
-
-
-def write_header():
-    header_path = OUTPUT_DIR / f"{MAP_NAME}.h"
-
-    include_guard = f"{MAP_NAME.upper()}_H"
-
-    header_path.write_text(
-        f"""#ifndef {include_guard}
-#define {include_guard}
-
-#include <stdint.h>
-
-#define ROOM0_WIDTH {WIDTH}
-#define ROOM0_HEIGHT {HEIGHT}
-
-extern const uint16_t {C_ARRAY_NAME}[ROOM0_WIDTH * ROOM0_HEIGHT];
-
-#endif
-"""
-    )
-
-
-def write_source(tile_data):
-    source_path = OUTPUT_DIR / f"{MAP_NAME}.c"
-
-    lines = []
-    # Use WIDTH (30) to determine how many tiles go on one line
-    for i in range(0, len(tile_data), WIDTH):
-        chunk = tile_data[i : i + WIDTH]
-        # Join the numbers with a comma and space
-        line_content = ", ".join(str(value) for value in chunk)
-        lines.append(f"    {line_content},")
-
-    source_path.write_text(
-        f"""#include "{MAP_NAME}.h"
-
-const uint16_t {C_ARRAY_NAME}[ROOM0_WIDTH * ROOM0_HEIGHT] = {{
-{chr(10).join(lines)}
-}};
-"""
-    )
-
-
-def main():
-    rows = load_csv(INPUT_CSV)
-    validate_map(rows)
-
-    tile_data = flatten(rows)
+            flat_data.extend(cleaned_row)
 
     expected_tiles = WIDTH * HEIGHT
-    actual_tiles = len(tile_data)
 
-    if actual_tiles != expected_tiles:
+    if len(flat_data) != expected_tiles:
+        actual_rows = len(flat_data) // WIDTH
         raise ValueError(
-            f"Expected {expected_tiles} tiles, got {actual_tiles} tiles."
+            f"Map height mismatch: got {actual_rows} rows; expected {HEIGHT}."
         )
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    return flat_data
 
-    write_header()
-    write_source(tile_data)
 
-    print(f"Converted {INPUT_CSV}")
-    print(f"Map size: {WIDTH} x {HEIGHT}")
-    print(f"Tiles written: {actual_tiles}")
-    print(f"Wrote {OUTPUT_DIR / (MAP_NAME + '.c')}")
-    print(f"Wrote {OUTPUT_DIR / (MAP_NAME + '.h')}")
+def generate_header_content() -> str:
+    """Generate the C header file content."""
+    guard = f"{MAP_NAME.upper()}_H"
+    width_macro = f"{MAP_NAME.upper()}_WIDTH"
+    height_macro = f"{MAP_NAME.upper()}_HEIGHT"
+
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        f"#include <stdint.h>\n\n"
+        f"#define {width_macro} {WIDTH}\n"
+        f"#define {height_macro} {HEIGHT}\n\n"
+        f"extern const uint16_t {MAP_NAME}_data[{width_macro} * {height_macro}];\n\n"
+        f"#endif // {guard}\n"
+    )
+
+
+def generate_source_content(tile_data: list[int]) -> str:
+    """Generate the C source file content with one map row per line."""
+    width_macro = f"{MAP_NAME.upper()}_WIDTH"
+    height_macro = f"{MAP_NAME.upper()}_HEIGHT"
+
+    formatted_rows: list[str] = []
+
+    for index in range(0, len(tile_data), WIDTH):
+        row_chunk = tile_data[index:index + WIDTH]
+        row_text = ", ".join(map(str, row_chunk))
+        formatted_rows.append(f"    {row_text},")
+
+    rows_block = "\n".join(formatted_rows)
+
+    return (
+        f'#include "{MAP_NAME}.h"\n\n'
+        f"const uint16_t {MAP_NAME}_data[{width_macro} * {height_macro}] = {{\n"
+        f"{rows_block}\n"
+        f"}};\n"
+    )
+
+
+def main() -> None:
+    try:
+        print(f"--- Processing {INPUT_CSV.name} ---")
+
+        tile_data = load_and_convert_csv(INPUT_CSV)
+
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        HEADER_FILE.write_text(generate_header_content(), encoding="utf-8")
+        SOURCE_FILE.write_text(generate_source_content(tile_data), encoding="utf-8")
+
+        print("Success!")
+        print(f"Dimensions: {WIDTH}x{HEIGHT} ({len(tile_data)} tiles)")
+        print(f"Output: {OUTPUT_DIR.resolve()}")
+
+    except FileNotFoundError:
+        print(f"Error: could not find {INPUT_CSV}.")
+    except ValueError as error:
+        print(f"Data error: {error}")
+    except Exception as error:
+        print(f"Unexpected error: {error}")
 
 
 if __name__ == "__main__":
