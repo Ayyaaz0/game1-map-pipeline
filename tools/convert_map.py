@@ -1,64 +1,47 @@
 from pathlib import Path
-import csv
+import json
 
-# --- Configuration ---
 MAP_NAME = "room0"
-WIDTH = 30
-HEIGHT = 30
-EMPTY_TILE_ID = -1
-BACKGROUND_TILE_ID = 0
+LAYER_NAME = "MetaTile"
 
-# --- Paths ---
-INPUT_CSV = Path("assets/maps/room0.csv")
+MAP_JSON = Path("assets/maps/room0.tmj")
 OUTPUT_DIR = Path("build")
 HEADER_FILE = OUTPUT_DIR / f"{MAP_NAME}.h"
 SOURCE_FILE = OUTPUT_DIR / f"{MAP_NAME}.c"
 
 
-def load_and_convert_csv(path: Path) -> list[int]:
-    """Read CSV, convert empty tiles, and return a flat list of tile IDs."""
-    flat_data: list[int] = []
+def load_map_json(path: Path) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"Map file not found: {path}")
 
-    with path.open(newline="", encoding="utf-8") as file:
-        reader = csv.reader(file)
+    with path.open(encoding="utf-8") as file:
+        return json.load(file)
 
-        for row_index, row in enumerate(reader):
-            cleaned_row: list[int] = []
 
-            for value in row:
-                value = value.strip()
+def find_tile_layer(map_data: dict) -> dict:
+    for layer in map_data.get("layers", []):
+        if layer.get("name") == LAYER_NAME and layer.get("type") == "tilelayer":
+            return layer
 
-                if not value:
-                    continue
+    raise ValueError(f"Tile layer '{LAYER_NAME}' not found.")
 
-                tile_id = int(value)
-                cleaned_row.append(
-                    BACKGROUND_TILE_ID if tile_id == EMPTY_TILE_ID else tile_id
-                )
 
-            if not cleaned_row:
-                continue
+def load_tile_data(map_data: dict) -> tuple[list[int], int, int]:
+    layer = find_tile_layer(map_data)
 
-            if len(cleaned_row) != WIDTH:
-                raise ValueError(
-                    f"Row {row_index} has {len(cleaned_row)} tiles; expected {WIDTH}."
-                )
+    width = layer["width"]
+    height = layer["height"]
+    tile_data = layer["data"]
 
-            flat_data.extend(cleaned_row)
-
-    expected_tiles = WIDTH * HEIGHT
-
-    if len(flat_data) != expected_tiles:
-        actual_rows = len(flat_data) // WIDTH
+    if len(tile_data) != width * height:
         raise ValueError(
-            f"Map height mismatch: got {actual_rows} rows; expected {HEIGHT}."
+            f"Layer has {len(tile_data)} tiles; expected {width * height}."
         )
 
-    return flat_data
+    return tile_data, width, height
 
 
-def generate_header_content() -> str:
-    """Generate the C header file content."""
+def generate_header_content(width: int, height: int) -> str:
     guard = f"{MAP_NAME.upper()}_H"
     width_macro = f"{MAP_NAME.upper()}_WIDTH"
     height_macro = f"{MAP_NAME.upper()}_HEIGHT"
@@ -67,26 +50,24 @@ def generate_header_content() -> str:
         f"#ifndef {guard}\n"
         f"#define {guard}\n\n"
         f"#include <stdint.h>\n\n"
-        f"#define {width_macro} {WIDTH}\n"
-        f"#define {height_macro} {HEIGHT}\n\n"
+        f"#define {width_macro} {width}\n"
+        f"#define {height_macro} {height}\n\n"
         f"extern const uint16_t {MAP_NAME}_data[{width_macro} * {height_macro}];\n\n"
         f"#endif // {guard}\n"
     )
 
 
-def generate_source_content(tile_data: list[int]) -> str:
-    """Generate the C source file content with one map row per line."""
+def generate_source_content(tile_data: list[int], width: int) -> str:
     width_macro = f"{MAP_NAME.upper()}_WIDTH"
     height_macro = f"{MAP_NAME.upper()}_HEIGHT"
 
-    formatted_rows: list[str] = []
+    rows = []
 
-    for index in range(0, len(tile_data), WIDTH):
-        row_chunk = tile_data[index:index + WIDTH]
-        row_text = ", ".join(map(str, row_chunk))
-        formatted_rows.append(f"    {row_text},")
+    for index in range(0, len(tile_data), width):
+        row = tile_data[index:index + width]
+        rows.append("    " + ", ".join(map(str, row)) + ",")
 
-    rows_block = "\n".join(formatted_rows)
+    rows_block = "\n".join(rows)
 
     return (
         f'#include "{MAP_NAME}.h"\n\n'
@@ -98,24 +79,21 @@ def generate_source_content(tile_data: list[int]) -> str:
 
 def main() -> None:
     try:
-        print(f"--- Processing {INPUT_CSV.name} ---")
+        print(f"--- Processing {MAP_JSON.name} / layer '{LAYER_NAME}' ---")
 
-        tile_data = load_and_convert_csv(INPUT_CSV)
+        map_data = load_map_json(MAP_JSON)
+        tile_data, width, height = load_tile_data(map_data)
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        HEADER_FILE.write_text(generate_header_content(), encoding="utf-8")
-        SOURCE_FILE.write_text(generate_source_content(tile_data), encoding="utf-8")
+        HEADER_FILE.write_text(generate_header_content(width, height), encoding="utf-8")
+        SOURCE_FILE.write_text(generate_source_content(tile_data, width), encoding="utf-8")
 
         print("Success!")
-        print(f"Dimensions: {WIDTH}x{HEIGHT} ({len(tile_data)} tiles)")
+        print(f"Dimensions: {width}x{height} ({len(tile_data)} tiles)")
         print(f"Output: {OUTPUT_DIR.resolve()}")
 
-    except FileNotFoundError:
-        print(f"Error: could not find {INPUT_CSV}.")
-    except ValueError as error:
-        print(f"Data error: {error}")
     except Exception as error:
-        print(f"Unexpected error: {error}")
+        print(f"Error: {error}")
 
 
 if __name__ == "__main__":
