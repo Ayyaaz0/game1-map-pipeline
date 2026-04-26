@@ -93,8 +93,28 @@ def pixel_to_palette_index(pixel: tuple[int, int, int, int]) -> int:
     if alpha < 128:
         return 0
 
+    if blue > red and blue > green:
+        return 6
+
+    if green > red and green > blue:
+        return 2
+
+    if red > green and red > blue:
+        return 4
+
+    if red > 180 and green > 120 and blue < 80:
+        return 8
+
     brightness = (red + green + blue) // 3
-    return min(15, brightness // 16)
+
+    if brightness < 40:
+        return 0
+    if brightness < 100:
+        return 1
+    if brightness < 170:
+        return 7
+
+    return 15
 
 
 def extract_tile(
