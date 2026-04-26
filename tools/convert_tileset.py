@@ -87,35 +87,56 @@ def find_tileset(global_tile_id: int, tilesets: list[dict]) -> dict:
     return selected
 
 
+CHROMA_PALETTE = [
+    (0x0D, 0x0D, 0x0D),  # 0 black
+    (0x38, 0x38, 0x38),  # 1 dark grey
+    (0x4F, 0x4F, 0x4F),  # 2 grey
+    (0x82, 0x82, 0x82),  # 3 light grey
+    (0xB5, 0xB5, 0xB5),  # 4 pale grey
+    (0xD9, 0xD9, 0xD9),  # 5 white
+
+    (0x32, 0x8C, 0x25),  # 6 dark green
+    (0x5D, 0xE3, 0x4A),  # 7 light green
+
+    (0x4C, 0x27, 0x12),  # 8 dark brown
+    (0x60, 0x36, 0x1D),  # 9 brown
+    (0xA8, 0x64, 0x37),  # 10 light brown
+    (0xD7, 0x7C, 0x40),  # 11 sand
+
+    (0xE6, 0x4E, 0x35),  # 12 red
+    (0xFB, 0x68, 0x4F),  # 13 light red
+
+    (0x63, 0x9B, 0xFF),  # 14 blue
+    (0x4D, 0xCC, 0xED),  # 15 cyan
+]
+
+def colour_distance_squared(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
+    red_diff = a[0] - b[0]
+    green_diff = a[1] - b[1]
+    blue_diff = a[2] - b[2]
+
+    return red_diff * red_diff + green_diff * green_diff + blue_diff * blue_diff
+
+
 def pixel_to_palette_index(pixel: tuple[int, int, int, int]) -> int:
     red, green, blue, alpha = pixel
 
     if alpha < 128:
         return 0
 
-    if blue > red and blue > green:
-        return 6
+    source = (red, green, blue)
 
-    if green > red and green > blue:
-        return 2
+    best_index = 0
+    best_distance = colour_distance_squared(source, CHROMA_PALETTE[0])
 
-    if red > green and red > blue:
-        return 4
+    for index, colour in enumerate(CHROMA_PALETTE[1:], start=1):
+        distance = colour_distance_squared(source, colour)
 
-    if red > 180 and green > 120 and blue < 80:
-        return 8
+        if distance < best_distance:
+            best_distance = distance
+            best_index = index
 
-    brightness = (red + green + blue) // 3
-
-    if brightness < 40:
-        return 0
-    if brightness < 100:
-        return 1
-    if brightness < 170:
-        return 7
-
-    return 15
-
+    return best_index
 
 def extract_tile(
     global_tile_id: int,
@@ -151,7 +172,7 @@ def format_pixels(pixels: list[int]) -> str:
     rows: list[str] = []
 
     for index in range(0, len(pixels), TILE_WIDTH):
-        row = pixels[index:index + TILE_WIDTH]
+        row = pixels[index : index + TILE_WIDTH]
         rows.append("    " + ", ".join(map(str, row)) + ",")
 
     return "\n".join(rows)
