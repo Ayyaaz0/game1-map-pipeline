@@ -3,7 +3,6 @@ import json
 
 from PIL import Image
 
-# --- Configuration ---
 MAP_JSON = Path("assets/maps/room0.tmj")
 OUTPUT_DIR = Path("build")
 MAP_NAME = "room0_tiles"
@@ -15,6 +14,30 @@ EMPTY_TILE_ID = 0
 TILESET_DIR = Path("assets/tilesets/Chroma-Noir-8x8")
 
 
+CHROMA_PALETTE = [
+    (0x0D, 0x0D, 0x0D),  # 0 black
+    (0x38, 0x38, 0x38),  # 1 dark grey
+    (0x4F, 0x4F, 0x4F),  # 2 grey
+    (0x82, 0x82, 0x82),  # 3 light grey
+    (0xB5, 0xB5, 0xB5),  # 4 pale grey
+    (0xD9, 0xD9, 0xD9),  # 5 white
+
+    (0x32, 0x8C, 0x25),  # 6 dark green
+    (0x5D, 0xE3, 0x4A),  # 7 light green
+
+    (0x4C, 0x27, 0x12),  # 8 dark brown
+    (0x60, 0x36, 0x1D),  # 9 brown
+    (0xA8, 0x64, 0x37),  # 10 light brown
+    (0xD7, 0x7C, 0x40),  # 11 sand
+
+    (0xE6, 0x4E, 0x35),  # 12 red
+    (0xFB, 0x68, 0x4F),  # 13 light red
+
+    (0x63, 0x9B, 0xFF),  # 14 blue
+    (0x4D, 0xCC, 0xED),  # 15 cyan
+]
+
+
 def load_map_json(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Map file not found: {path}")
@@ -23,7 +46,7 @@ def load_map_json(path: Path) -> dict:
         return json.load(file)
 
 
-def load_used_tile_ids(map_data: dict) -> list[int]:
+def load_used_tile_ids(map_data: dict) -> set[int]:
     used_ids: set[int] = set()
 
     for layer in map_data["layers"]:
@@ -34,7 +57,7 @@ def load_used_tile_ids(map_data: dict) -> list[int]:
             if tile_id != EMPTY_TILE_ID:
                 used_ids.add(tile_id)
 
-    return sorted(used_ids)
+    return used_ids
 
 
 def load_tileset_config(map_data: dict) -> list[dict]:
@@ -49,10 +72,47 @@ def load_tileset_config(map_data: dict) -> list[dict]:
                 "firstgid": tileset["firstgid"],
                 "columns": tileset["columns"],
                 "path": TILESET_DIR / image_name,
+                "tiles": tileset.get("tiles", []),
             }
         )
 
     return sorted(tilesets, key=lambda item: item["firstgid"])
+
+
+def load_animation_table(tilesets: list[dict]) -> dict[int, list[int]]:
+    animations: dict[int, list[int]] = {}
+
+    for tileset in tilesets:
+        firstgid = tileset["firstgid"]
+
+        for tile in tileset["tiles"]:
+            if "animation" not in tile:
+                continue
+
+            base_gid = firstgid + tile["id"]
+            frame_gids = [
+                firstgid + frame["tileid"]
+                for frame in tile["animation"]
+            ]
+
+            animations[base_gid] = frame_gids
+
+    return animations
+
+
+def add_animation_frames(
+    used_ids: set[int],
+    animations: dict[int, list[int]],
+) -> set[int]:
+    expanded_ids = set(used_ids)
+
+    for animated_gid, frame_gids in animations.items():
+        if animated_gid not in used_ids:
+            continue
+
+        expanded_ids.update(frame_gids)
+
+    return expanded_ids
 
 
 def load_tileset_images(tilesets: list[dict]) -> dict[str, Image.Image]:
@@ -87,33 +147,13 @@ def find_tileset(global_tile_id: int, tilesets: list[dict]) -> dict:
     return selected
 
 
-CHROMA_PALETTE = [
-    (0x0D, 0x0D, 0x0D),  # 0 black
-    (0x38, 0x38, 0x38),  # 1 dark grey
-    (0x4F, 0x4F, 0x4F),  # 2 grey
-    (0x82, 0x82, 0x82),  # 3 light grey
-    (0xB5, 0xB5, 0xB5),  # 4 pale grey
-    (0xD9, 0xD9, 0xD9),  # 5 white
-
-    (0x32, 0x8C, 0x25),  # 6 dark green
-    (0x5D, 0xE3, 0x4A),  # 7 light green
-
-    (0x4C, 0x27, 0x12),  # 8 dark brown
-    (0x60, 0x36, 0x1D),  # 9 brown
-    (0xA8, 0x64, 0x37),  # 10 light brown
-    (0xD7, 0x7C, 0x40),  # 11 sand
-
-    (0xE6, 0x4E, 0x35),  # 12 red
-    (0xFB, 0x68, 0x4F),  # 13 light red
-
-    (0x63, 0x9B, 0xFF),  # 14 blue
-    (0x4D, 0xCC, 0xED),  # 15 cyan
-]
-
-def colour_distance_squared(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
-    red_diff = a[0] - b[0]
-    green_diff = a[1] - b[1]
-    blue_diff = a[2] - b[2]
+def colour_distance_squared(
+    colour_a: tuple[int, int, int],
+    colour_b: tuple[int, int, int],
+) -> int:
+    red_diff = colour_a[0] - colour_b[0]
+    green_diff = colour_a[1] - colour_b[1]
+    blue_diff = colour_a[2] - colour_b[2]
 
     return red_diff * red_diff + green_diff * green_diff + blue_diff * blue_diff
 
@@ -124,19 +164,20 @@ def pixel_to_palette_index(pixel: tuple[int, int, int, int]) -> int:
     if alpha < 128:
         return 0
 
-    source = (red, green, blue)
+    source_colour = (red, green, blue)
 
     best_index = 0
-    best_distance = colour_distance_squared(source, CHROMA_PALETTE[0])
+    best_distance = colour_distance_squared(source_colour, CHROMA_PALETTE[0])
 
-    for index, colour in enumerate(CHROMA_PALETTE[1:], start=1):
-        distance = colour_distance_squared(source, colour)
+    for index, palette_colour in enumerate(CHROMA_PALETTE[1:], start=1):
+        distance = colour_distance_squared(source_colour, palette_colour)
 
         if distance < best_distance:
             best_distance = distance
             best_index = index
 
     return best_index
+
 
 def extract_tile(
     global_tile_id: int,
@@ -172,13 +213,13 @@ def format_pixels(pixels: list[int]) -> str:
     rows: list[str] = []
 
     for index in range(0, len(pixels), TILE_WIDTH):
-        row = pixels[index : index + TILE_WIDTH]
+        row = pixels[index:index + TILE_WIDTH]
         rows.append("    " + ", ".join(map(str, row)) + ",")
 
     return "\n".join(rows)
 
 
-def generate_header(tile_count: int) -> str:
+def generate_header(tile_count: int, animation_count: int) -> str:
     guard = f"{MAP_NAME.upper()}_H"
 
     return (
@@ -186,14 +227,20 @@ def generate_header(tile_count: int) -> str:
         f"#define {guard}\n\n"
         f"#include <stdint.h>\n\n"
         f"#define {MAP_NAME.upper()}_COUNT {tile_count}\n"
+        f"#define {MAP_NAME.upper()}_ANIMATION_COUNT {animation_count}\n"
         f"#define {MAP_NAME.upper()}_WIDTH {TILE_WIDTH}\n"
         f"#define {MAP_NAME.upper()}_HEIGHT {TILE_HEIGHT}\n\n"
-        f"const uint8_t *Game1_Tiles_Find(uint16_t tiled_id);\n\n"
+        f"const uint8_t *Game1_Tiles_Find(uint16_t tiled_id);\n"
+        f"uint16_t Game1_Tiles_ResolveAnimation(uint16_t tiled_id, uint32_t frame_counter);\n\n"
         f"#endif // {guard}\n"
     )
 
 
-def generate_source(tile_ids: list[int], tile_data: dict[int, list[int]]) -> str:
+def generate_source(
+    tile_ids: list[int],
+    tile_data: dict[int, list[int]],
+    animations: dict[int, list[int]],
+) -> str:
     parts: list[str] = [f'#include "{MAP_NAME}.h"\n\n']
 
     for index, tile_id in enumerate(tile_ids):
@@ -226,6 +273,42 @@ def generate_source(tile_ids: list[int], tile_data: dict[int, list[int]]) -> str
         "    }\n"
         "  }\n\n"
         "  return 0;\n"
+        "}\n\n"
+    )
+
+    parts.append(
+        "typedef struct {\n"
+        "  uint16_t id;\n"
+        "  uint8_t frame_count;\n"
+        "  const uint16_t *frames;\n"
+        "} AnimationEntry;\n\n"
+    )
+
+    for index, (animated_gid, frame_gids) in enumerate(animations.items()):
+        parts.append(
+            f"static const uint16_t animation_{index}_frames[] = {{ "
+            f"{', '.join(map(str, frame_gids))} "
+            f"}};\n"
+        )
+
+    parts.append(f"\nstatic const AnimationEntry animations[{MAP_NAME.upper()}_ANIMATION_COUNT] = {{\n")
+
+    for index, (animated_gid, frame_gids) in enumerate(animations.items()):
+        parts.append(
+            f"  {{ {animated_gid}, {len(frame_gids)}, animation_{index}_frames }},\n"
+        )
+
+    parts.append("};\n\n")
+
+    parts.append(
+        "uint16_t Game1_Tiles_ResolveAnimation(uint16_t tiled_id, uint32_t frame_counter) {\n"
+        f"  for (uint16_t i = 0; i < {MAP_NAME.upper()}_ANIMATION_COUNT; i++) {{\n"
+        "    if (animations[i].id == tiled_id) {\n"
+        "      uint8_t frame_index = frame_counter % animations[i].frame_count;\n"
+        "      return animations[i].frames[frame_index];\n"
+        "    }\n"
+        "  }\n\n"
+        "  return tiled_id;\n"
         "}\n"
     )
 
@@ -243,11 +326,21 @@ def main() -> None:
             return
 
         tilesets = load_tileset_config(map_data)
+        animations = load_animation_table(tilesets)
+
+        used_animations = {
+            animated_gid: frame_gids
+            for animated_gid, frame_gids in animations.items()
+            if animated_gid in used_tile_ids
+        }
+
+        export_tile_ids = sorted(add_animation_frames(used_tile_ids, used_animations))
+
         tileset_images = load_tileset_images(tilesets)
 
         tile_data = {
             tile_id: extract_tile(tile_id, tilesets, tileset_images)
-            for tile_id in used_tile_ids
+            for tile_id in export_tile_ids
         }
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -255,12 +348,18 @@ def main() -> None:
         header_path = OUTPUT_DIR / f"{MAP_NAME}.h"
         source_path = OUTPUT_DIR / f"{MAP_NAME}.c"
 
-        header_path.write_text(generate_header(len(used_tile_ids)), encoding="utf-8")
-        source_path.write_text(
-            generate_source(used_tile_ids, tile_data), encoding="utf-8"
+        header_path.write_text(
+            generate_header(len(export_tile_ids), len(used_animations)),
+            encoding="utf-8",
         )
 
-        print(f"Success! {len(used_tile_ids)} tiles processed.")
+        source_path.write_text(
+            generate_source(export_tile_ids, tile_data, used_animations),
+            encoding="utf-8",
+        )
+
+        print(f"Success! {len(export_tile_ids)} tiles processed.")
+        print(f"Animations exported: {len(used_animations)}")
         print(f"Wrote {header_path}")
         print(f"Wrote {source_path}")
 
