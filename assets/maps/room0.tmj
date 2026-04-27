@@ -47,7 +47,6 @@
         {
          "draworder":"topdown",
          "id":13,
-         "locked":true,
          "name":"Entities",
          "objects":[
                 {
@@ -57,6 +56,11 @@
                  "opacity":1,
                  "properties":[
                         {
+                         "name":"closed_gid",
+                         "type":"int",
+                         "value":30065
+                        }, 
+                        {
                          "name":"key_id",
                          "type":"int",
                          "value":0
@@ -65,6 +69,16 @@
                          "name":"locked",
                          "type":"bool",
                          "value":true
+                        }, 
+                        {
+                         "name":"open_gid ",
+                         "type":"int",
+                         "value":30067
+                        }, 
+                        {
+                         "name":"opening_gid",
+                         "type":"int",
+                         "value":30066
                         }, 
                         {
                          "name":"type",
@@ -88,6 +102,11 @@
                          "name":"key_id",
                          "type":"int",
                          "value":0
+                        }, 
+                        {
+                         "name":"sprite_gid",
+                         "type":"int",
+                         "value":30426
                         }, 
                         {
                          "name":"type",
@@ -216,6 +235,19 @@
          "spacing":0,
          "tilecount":112,
          "tileheight":8,
+         "tiles":[
+                {
+                 "animation":[
+                        {
+                         "duration":120,
+                         "tileid":0
+                        }, 
+                        {
+                         "duration":120,
+                         "tileid":1
+                        }],
+                 "id":0
+                }],
          "tilewidth":8
         }, 
         {
@@ -259,20 +291,53 @@
                 {
                  "animation":[
                         {
-                         "duration":100,
+                         "duration":160,
                          "tileid":32
                         }, 
                         {
-                         "duration":100,
+                         "duration":160,
                          "tileid":33
                         }, 
                         {
-                         "duration":100,
+                         "duration":160,
                          "tileid":34
                         }],
                  "id":32
+                }, 
+                {
+                 "animation":[
+                        {
+                         "duration":160,
+                         "tileid":224
+                        }, 
+                        {
+                         "duration":160,
+                         "tileid":225
+                        }, 
+                        {
+                         "duration":160,
+                         "tileid":226
+                        }, 
+                        {
+                         "duration":160,
+                         "tileid":227
+                        }],
+                 "id":224
                 }],
          "tilewidth":16
+        }, 
+        {
+         "columns":10,
+         "firstgid":30385,
+         "image":"..\/Chroma-Noir-8x8\/Items.png",
+         "imageheight":64,
+         "imagewidth":80,
+         "margin":0,
+         "name":"Items",
+         "spacing":0,
+         "tilecount":80,
+         "tileheight":8,
+         "tilewidth":8
         }],
  "tilewidth":8,
  "type":"map",
