@@ -43,9 +43,90 @@
          "width":30,
          "x":0,
          "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":13,
+         "locked":true,
+         "name":"Entities",
+         "objects":[
+                {
+                 "height":16,
+                 "id":4,
+                 "name":"door_0",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"key_id",
+                         "type":"int",
+                         "value":0
+                        }, 
+                        {
+                         "name":"locked",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"type",
+                         "type":"string",
+                         "value":"door"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":16,
+                 "x":220,
+                 "y":96
+                }, 
+                {
+                 "height":8,
+                 "id":12,
+                 "name":"key_0",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"key_id",
+                         "type":"int",
+                         "value":0
+                        }, 
+                        {
+                         "name":"type",
+                         "type":"string",
+                         "value":"key"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":8,
+                 "x":168,
+                 "y":144
+                }, 
+                {
+                 "height":8,
+                 "id":13,
+                 "name":"player_spawn",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"type",
+                         "type":"string",
+                         "value":"spawn"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":8,
+                 "x":10,
+                 "y":102
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
         }],
- "nextlayerid":10,
- "nextobjectid":1,
+ "nextlayerid":15,
+ "nextobjectid":14,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.1",
@@ -162,6 +243,36 @@
          "tilecount":1118,
          "tileheight":8,
          "tilewidth":8
+        }, 
+        {
+         "columns":8,
+         "firstgid":30033,
+         "image":"..\/Chroma-Noir-8x8\/Interactables.png",
+         "imageheight":704,
+         "imagewidth":128,
+         "margin":0,
+         "name":"Interactables16x16",
+         "spacing":0,
+         "tilecount":352,
+         "tileheight":16,
+         "tiles":[
+                {
+                 "animation":[
+                        {
+                         "duration":100,
+                         "tileid":32
+                        }, 
+                        {
+                         "duration":100,
+                         "tileid":33
+                        }, 
+                        {
+                         "duration":100,
+                         "tileid":34
+                        }],
+                 "id":32
+                }],
+         "tilewidth":16
         }],
  "tilewidth":8,
  "type":"map",
