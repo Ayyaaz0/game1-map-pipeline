@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+
 from PIL import Image
 
 MAP_JSON = Path("assets/maps/room0.tmj")
@@ -9,9 +10,8 @@ MAP_NAME = "room0_tiles"
 EMPTY_TILE_ID = 0
 TILESET_DIR = Path("assets/tilesets/Chroma-Noir-8x8")
 
-# ----------------------------
-# Palette (your engine palette)
-# ----------------------------
+# Palette indices used by the LCD engine.
+# The converter maps source PNG colours to the nearest colour in this palette.
 CHROMA_PALETTE = [
     (0x0D, 0x0D, 0x0D),
     (0x38, 0x38, 0x38),
@@ -31,203 +31,365 @@ CHROMA_PALETTE = [
     (0x4D, 0xCC, 0xED),
 ]
 
-# ----------------------------
-# Utils
-# ----------------------------
 
-def load_map():
-    return json.loads(MAP_JSON.read_text())
+def load_map() -> dict:
+    """Load the exported Tiled JSON map."""
+    if not MAP_JSON.exists():
+        raise FileNotFoundError(f"Map file not found: {MAP_JSON}")
 
-def colour_distance(a, b):
-    return sum((a[i] - b[i])**2 for i in range(3))
+    return json.loads(MAP_JSON.read_text(encoding="utf-8"))
 
-def pixel_to_palette(pixel):
-    r, g, b, a = pixel
-    if a < 128:
+
+def colour_distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
+    """Return squared RGB distance between two colours."""
+    return sum((a[i] - b[i]) ** 2 for i in range(3))
+
+
+def pixel_to_palette(pixel: tuple[int, int, int, int]) -> int:
+    """Convert one RGBA pixel to the nearest engine palette index."""
+    red, green, blue, alpha = pixel
+
+    if alpha < 128:
         return 0
 
-    best = 0
-    best_dist = colour_distance((r,g,b), CHROMA_PALETTE[0])
+    source_colour = (red, green, blue)
 
-    for i, p in enumerate(CHROMA_PALETTE[1:], start=1):
-        d = colour_distance((r,g,b), p)
-        if d < best_dist:
-            best_dist = d
-            best = i
+    best_index = 0
+    best_distance = colour_distance(source_colour, CHROMA_PALETTE[0])
 
-    return best
+    for index, palette_colour in enumerate(CHROMA_PALETTE[1:], start=1):
+        distance = colour_distance(source_colour, palette_colour)
 
-# ----------------------------
-# Tile extraction
-# ----------------------------
+        if distance < best_distance:
+            best_distance = distance
+            best_index = index
 
-def load_tilesets(map_data):
-    tilesets = []
+    return best_index
 
-    for ts in map_data["tilesets"]:
-        tilesets.append({
-            "name": ts["name"],
-            "firstgid": ts["firstgid"],
-            "columns": ts["columns"],
-            "tilewidth": ts["tilewidth"],
-            "tileheight": ts["tileheight"],
-            "image": TILESET_DIR / Path(ts["image"]).name,
-            "tiles": ts.get("tiles", [])
-        })
 
-    return sorted(tilesets, key=lambda t: t["firstgid"])
+def load_tilesets(map_data: dict) -> list[dict]:
+    """Load tileset metadata from the Tiled map."""
+    tilesets: list[dict] = []
 
-def find_tileset(gid, tilesets):
-    chosen = None
-    for ts in tilesets:
-        if gid >= ts["firstgid"]:
-            chosen = ts
+    for tileset in map_data["tilesets"]:
+        image_name = Path(tileset["image"]).name
+
+        tilesets.append(
+            {
+                "name": tileset["name"],
+                "firstgid": tileset["firstgid"],
+                "columns": tileset["columns"],
+                "tilewidth": tileset["tilewidth"],
+                "tileheight": tileset["tileheight"],
+                "image": TILESET_DIR / image_name,
+                "tiles": tileset.get("tiles", []),
+            }
+        )
+
+    return sorted(tilesets, key=lambda item: item["firstgid"])
+
+
+def load_tileset_images(tilesets: list[dict]) -> dict[str, Image.Image]:
+    """Load all tileset PNGs referenced by the Tiled map."""
+    images: dict[str, Image.Image] = {}
+
+    for tileset in tilesets:
+        image_path = tileset["image"]
+
+        if not image_path.exists():
+            raise FileNotFoundError(f"Missing tileset image: {image_path}")
+
+        images[tileset["name"]] = Image.open(image_path).convert("RGBA")
+
+    return images
+
+
+def find_tileset(gid: int, tilesets: list[dict]) -> dict:
+    """Find which tileset owns a global tile ID."""
+    selected = None
+
+    for tileset in tilesets:
+        if gid >= tileset["firstgid"]:
+            selected = tileset
         else:
             break
-    return chosen
 
-def extract_tile(gid, tilesets, images):
-    ts = find_tileset(gid, tilesets)
+    if selected is None:
+        raise ValueError(f"No tileset found for GID {gid}")
 
-    local = gid - ts["firstgid"]
-    w = ts["tilewidth"]
-    h = ts["tileheight"]
-    cols = ts["columns"]
+    return selected
 
-    img = images[ts["name"]]
 
-    x0 = (local % cols) * w
-    y0 = (local // cols) * h
+def extract_tile(
+    gid: int,
+    tilesets: list[dict],
+    images: dict[str, Image.Image],
+) -> dict:
+    """Extract one tile/sprite from its tileset image."""
+    tileset = find_tileset(gid, tilesets)
 
-    pixels = []
-    for y in range(h):
-        for x in range(w):
-            pixels.append(pixel_to_palette(img.getpixel((x0+x, y0+y))))
+    local_id = gid - tileset["firstgid"]
+    tile_width = tileset["tilewidth"]
+    tile_height = tileset["tileheight"]
+    columns = tileset["columns"]
+
+    image = images[tileset["name"]]
+
+    x0 = (local_id % columns) * tile_width
+    y0 = (local_id // columns) * tile_height
+
+    if x0 + tile_width > image.width or y0 + tile_height > image.height:
+        raise ValueError(
+            f"GID {gid} is outside image bounds for tileset '{tileset['name']}'"
+        )
+
+    pixels: list[int] = []
+
+    for y in range(tile_height):
+        for x in range(tile_width):
+            pixels.append(pixel_to_palette(image.getpixel((x0 + x, y0 + y))))
 
     return {
         "pixels": pixels,
-        "width": w,
-        "height": h
+        "width": tile_width,
+        "height": tile_height,
     }
 
-# ----------------------------
-# GID collection
-# ----------------------------
 
-def collect_gids(map_data):
-    gids = set()
+def collect_layer_gids(map_data: dict) -> set[int]:
+    """Collect all tile GIDs used directly by tile layers."""
+    gids: set[int] = set()
 
-    # Tile layers
     for layer in map_data["layers"]:
-        if layer["type"] == "tilelayer":
-            gids.update([t for t in layer["data"] if t != 0])
-
-    # Object sprites
-    for layer in map_data["layers"]:
-        if layer["type"] != "objectgroup":
+        if layer.get("type") != "tilelayer":
             continue
 
-        for obj in layer["objects"]:
-            for prop in obj.get("properties", []):
-                if prop["name"].strip() in (
-                    "sprite_gid", "closed_gid", "opening_gid", "open_gid"
-                ):
-                    gids.add(int(prop["value"]))
+        for gid in layer.get("data", []):
+            if gid != EMPTY_TILE_ID:
+                gids.add(gid)
 
     return gids
 
-# ----------------------------
-# Output generation
-# ----------------------------
 
-def generate_header(count, anim_count):
-    return f"""
-#ifndef ROOM0_TILES_H
-#define ROOM0_TILES_H
+def collect_object_sprite_gids(map_data: dict) -> set[int]:
+    """Collect sprite GIDs referenced by object layer properties."""
+    gids: set[int] = set()
 
-#include <stdint.h>
-
-#define ROOM0_TILES_COUNT {count}
-#define ROOM0_TILES_ANIMATION_COUNT {anim_count}
-
-typedef struct {{
-  const uint8_t *pixels;
-  uint8_t width;
-  uint8_t height;
-}} Game1_TileSprite;
-
-const Game1_TileSprite *Game1_Tiles_Find(uint16_t tiled_id);
-uint16_t Game1_Tiles_ResolveAnimation(uint16_t tiled_id, uint32_t frame);
-
-#endif
-"""
-
-def generate_source(tile_ids, tile_data):
-    out = ['#include "room0_tiles.h"\n\n']
-
-    # raw pixel arrays
-    for i, gid in enumerate(tile_ids):
-        t = tile_data[gid]
-        pixels = ", ".join(map(str, t["pixels"]))
-        out.append(f"static const uint8_t t_{i}[] = {{ {pixels} }};\n")
-
-    out.append("\ntypedef struct { uint16_t id; Game1_TileSprite s; } Entry;\n")
-
-    out.append(f"static const Entry lookup[{len(tile_ids)}] = {{\n")
-
-    for i, gid in enumerate(tile_ids):
-        t = tile_data[gid]
-        out.append(
-            f"  {{ {gid}, {{ t_{i}, {t['width']}, {t['height']} }} }},\n"
-        )
-
-    out.append("};\n\n")
-
-    out.append("""
-const Game1_TileSprite *Game1_Tiles_Find(uint16_t id) {
-  for (uint16_t i = 0; i < ROOM0_TILES_COUNT; i++) {
-    if (lookup[i].id == id) return &lookup[i].s;
-  }
-  return 0;
-}
-
-uint16_t Game1_Tiles_ResolveAnimation(uint16_t id, uint32_t frame) {
-  return id;
-}
-""")
-
-    return "".join(out)
-
-# ----------------------------
-# MAIN
-# ----------------------------
-
-def main():
-    map_data = load_map()
-    tilesets = load_tilesets(map_data)
-
-    images = {
-        ts["name"]: Image.open(ts["image"]).convert("RGBA")
-        for ts in tilesets
+    sprite_properties = {
+        "sprite_gid",
+        "closed_gid",
+        "opening_gid",
+        "open_gid",
     }
 
-    gids = sorted(collect_gids(map_data))
+    for layer in map_data["layers"]:
+        if layer.get("type") != "objectgroup":
+            continue
+
+        for obj in layer.get("objects", []):
+            for prop in obj.get("properties", []):
+                property_name = prop.get("name", "").strip()
+
+                if property_name not in sprite_properties:
+                    continue
+
+                gid = int(prop.get("value", 0))
+
+                if gid != EMPTY_TILE_ID:
+                    gids.add(gid)
+
+    return gids
+
+
+def collect_animations(map_data: dict) -> dict[int, list[int]]:
+    """Collect Tiled tile animations as {base_gid: [frame_gids...]}."""
+    animations: dict[int, list[int]] = {}
+
+    for tileset in map_data["tilesets"]:
+        firstgid = tileset["firstgid"]
+
+        for tile in tileset.get("tiles", []):
+            if "animation" not in tile:
+                continue
+
+            base_gid = firstgid + tile["id"]
+            frame_gids = [
+                firstgid + frame["tileid"] for frame in tile["animation"]
+            ]
+
+            animations[base_gid] = frame_gids
+
+    return animations
+
+
+def collect_export_gids(map_data: dict, animations: dict[int, list[int]]) -> list[int]:
+    """Collect every GID that must be exported to C."""
+    gids = collect_layer_gids(map_data)
+    gids.update(collect_object_sprite_gids(map_data))
+
+    # If an animated tile is used, all of its animation frames must also be exported.
+    for base_gid, frame_gids in animations.items():
+        if base_gid in gids:
+            gids.update(frame_gids)
+
+    return sorted(gids)
+
+
+def format_pixels(tile: dict) -> str:
+    """Format one sprite's pixels as readable C array rows."""
+    rows: list[str] = []
+    pixels = tile["pixels"]
+    width = tile["width"]
+
+    for index in range(0, len(pixels), width):
+        row = pixels[index : index + width]
+        rows.append("  " + ", ".join(map(str, row)) + ",")
+
+    return "\n".join(rows)
+
+
+def generate_header(tile_count: int, animation_count: int) -> str:
+    guard = f"{MAP_NAME.upper()}_H"
+
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        f"#include <stdint.h>\n\n"
+        f"#define {MAP_NAME.upper()}_COUNT {tile_count}\n"
+        f"#define {MAP_NAME.upper()}_ANIMATION_COUNT {animation_count}\n\n"
+        "typedef struct {\n"
+        "  const uint8_t *pixels;\n"
+        "  uint8_t width;\n"
+        "  uint8_t height;\n"
+        "} Game1_TileSprite;\n\n"
+        "const Game1_TileSprite *Game1_Tiles_Find(uint16_t tiled_id);\n"
+        "uint16_t Game1_Tiles_ResolveAnimation(uint16_t tiled_id,\n"
+        "                                      uint32_t frame_counter);\n\n"
+        f"#endif // {guard}\n"
+    )
+
+
+def generate_source(
+    tile_ids: list[int],
+    tile_data: dict[int, dict],
+    animations: dict[int, list[int]],
+) -> str:
+    parts: list[str] = [f'#include "{MAP_NAME}.h"\n\n']
+
+    for index, gid in enumerate(tile_ids):
+        tile = tile_data[gid]
+
+        parts.append(f"static const uint8_t tile_{index}[] = {{\n")
+        parts.append(format_pixels(tile))
+        parts.append("\n};\n\n")
+
+        parts.append(
+            f"static const Game1_TileSprite sprite_{index} = "
+            f"{{ tile_{index}, {tile['width']}, {tile['height']} }};\n\n"
+        )
+
+    parts.append(
+        "typedef struct {\n"
+        "  uint16_t id;\n"
+        "  const Game1_TileSprite *sprite;\n"
+        "} TileEntry;\n\n"
+    )
+
+    parts.append(f"static const TileEntry lookup[{MAP_NAME.upper()}_COUNT] = {{\n")
+
+    for index, gid in enumerate(tile_ids):
+        parts.append(f"  {{ {gid}, &sprite_{index} }},\n")
+
+    parts.append("};\n\n")
+
+    parts.append(
+        "const Game1_TileSprite *Game1_Tiles_Find(uint16_t tiled_id) {\n"
+        f"  for (uint16_t i = 0; i < {MAP_NAME.upper()}_COUNT; i++) {{\n"
+        "    if (lookup[i].id == tiled_id) {\n"
+        "      return lookup[i].sprite;\n"
+        "    }\n"
+        "  }\n\n"
+        "  return 0;\n"
+        "}\n\n"
+    )
+
+    for index, (_, frame_gids) in enumerate(animations.items()):
+        frames = ", ".join(map(str, frame_gids))
+        parts.append(
+            f"static const uint16_t animation_{index}_frames[] = "
+            f"{{ {frames} }};\n"
+        )
+
+    parts.append(
+        "\ntypedef struct {\n"
+        "  uint16_t id;\n"
+        "  uint8_t frame_count;\n"
+        "  const uint16_t *frames;\n"
+        "} AnimationEntry;\n\n"
+    )
+
+    parts.append(
+        f"static const AnimationEntry animations"
+        f"[{MAP_NAME.upper()}_ANIMATION_COUNT] = {{\n"
+    )
+
+    for index, (base_gid, frame_gids) in enumerate(animations.items()):
+        parts.append(
+            f"  {{ {base_gid}, {len(frame_gids)}, animation_{index}_frames }},\n"
+        )
+
+    parts.append("};\n\n")
+
+    parts.append(
+        "uint16_t Game1_Tiles_ResolveAnimation(uint16_t tiled_id,\n"
+        "                                      uint32_t frame_counter) {\n"
+        f"  for (uint16_t i = 0; i < {MAP_NAME.upper()}_ANIMATION_COUNT; i++) {{\n"
+        "    if (animations[i].id == tiled_id) {\n"
+        "      uint8_t frame_index = frame_counter % animations[i].frame_count;\n"
+        "      return animations[i].frames[frame_index];\n"
+        "    }\n"
+        "  }\n\n"
+        "  return tiled_id;\n"
+        "}\n"
+    )
+
+    return "".join(parts)
+
+
+def main() -> None:
+    map_data = load_map()
+
+    tilesets = load_tilesets(map_data)
+    images = load_tileset_images(tilesets)
+
+    animations = collect_animations(map_data)
+    tile_ids = collect_export_gids(map_data, animations)
 
     tile_data = {
         gid: extract_tile(gid, tilesets, images)
-        for gid in gids
+        for gid in tile_ids
     }
 
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    (OUTPUT_DIR / "room0_tiles.h").write_text(
-        generate_header(len(gids), 0)
-    )
-    (OUTPUT_DIR / "room0_tiles.c").write_text(
-        generate_source(gids, tile_data)
+    header_path = OUTPUT_DIR / f"{MAP_NAME}.h"
+    source_path = OUTPUT_DIR / f"{MAP_NAME}.c"
+
+    header_path.write_text(
+        generate_header(len(tile_ids), len(animations)),
+        encoding="utf-8",
     )
 
-    print("Tileset export complete.")
+    source_path.write_text(
+        generate_source(tile_ids, tile_data, animations),
+        encoding="utf-8",
+    )
+
+    print(f"Success! Exported {len(tile_ids)} sprites.")
+    print(f"Animations exported: {len(animations)}")
+    print(f"Wrote {header_path}")
+    print(f"Wrote {source_path}")
+
 
 if __name__ == "__main__":
     main()
