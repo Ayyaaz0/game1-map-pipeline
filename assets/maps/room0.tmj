@@ -137,6 +137,34 @@
                  "width":8,
                  "x":10,
                  "y":102
+                }, 
+                {
+                 "height":8,
+                 "id":14,
+                 "name":"coins_0",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"sprite_gid",
+                         "type":"int",
+                         "value":30429
+                        }, 
+                        {
+                         "name":"type",
+                         "type":"string",
+                         "value":"coin"
+                        }, 
+                        {
+                         "name":"value",
+                         "type":"int",
+                         "value":1
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":32,
+                 "x":96,
+                 "y":184
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -144,8 +172,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":15,
- "nextobjectid":14,
+ "nextlayerid":16,
+ "nextobjectid":17,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.1",
@@ -291,15 +319,15 @@
                 {
                  "animation":[
                         {
-                         "duration":160,
+                         "duration":330,
                          "tileid":32
                         }, 
                         {
-                         "duration":160,
+                         "duration":330,
                          "tileid":33
                         }, 
                         {
-                         "duration":160,
+                         "duration":330,
                          "tileid":34
                         }],
                  "id":32
@@ -337,6 +365,27 @@
          "spacing":0,
          "tilecount":80,
          "tileheight":8,
+         "tiles":[
+                {
+                 "animation":[
+                        {
+                         "duration":110,
+                         "tileid":44
+                        }, 
+                        {
+                         "duration":110,
+                         "tileid":54
+                        }, 
+                        {
+                         "duration":110,
+                         "tileid":64
+                        }, 
+                        {
+                         "duration":110,
+                         "tileid":74
+                        }],
+                 "id":44
+                }],
          "tilewidth":8
         }],
  "tilewidth":8,
