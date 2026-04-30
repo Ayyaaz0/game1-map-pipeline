@@ -63,7 +63,7 @@ def pixel_to_palette(pixel: tuple[int, int, int, int]) -> int:
     red, green, blue, alpha = pixel
 
     if alpha < 128:
-        return 0
+        return 255
 
     rgb = (red, green, blue)
 
