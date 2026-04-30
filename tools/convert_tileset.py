@@ -10,26 +10,39 @@ MAP_NAME = "room0_tiles"
 EMPTY_TILE_ID = 0
 TILESET_DIR = Path("assets/tilesets/Chroma-Noir-8x8")
 
-# Palette indices used by the LCD engine.
-# The converter maps source PNG colours to the nearest colour in this palette.
-CHROMA_PALETTE = [
-    (0x0D, 0x0D, 0x0D),
-    (0x38, 0x38, 0x38),
-    (0x4F, 0x4F, 0x4F),
-    (0x82, 0x82, 0x82),
-    (0xB5, 0xB5, 0xB5),
-    (0xD9, 0xD9, 0xD9),
-    (0x32, 0x8C, 0x25),
-    (0x5D, 0xE3, 0x4A),
-    (0x4C, 0x27, 0x12),
-    (0x60, 0x36, 0x1D),
-    (0xA8, 0x64, 0x37),
-    (0xD7, 0x7C, 0x40),
-    (0xE6, 0x4E, 0x35),
-    (0xFB, 0x68, 0x4F),
-    (0x63, 0x9B, 0xFF),
-    (0x4D, 0xCC, 0xED),
-]
+# Engine palette index map.
+# These indices must match your Chroma palette order in LCD.c / LCD.h.
+EXACT_COLOUR_MAP = {
+    # Greys
+    (0x0D, 0x0D, 0x0D): 0,   # black
+    (0x38, 0x38, 0x38): 1,
+    (0x4F, 0x4F, 0x4F): 2,
+    (0x53, 0x53, 0x53): 2,   # asset grey variant
+    (0x82, 0x82, 0x82): 3,
+    (0xB5, 0xB5, 0xB5): 4,
+    (0xD9, 0xD9, 0xD9): 5,   # white
+
+    # Blues
+    (0x2A, 0x45, 0x5A): 6,   # dark water blue
+    (0x63, 0x9B, 0xFF): 7,   # water blue
+
+    # Reds
+    (0x90, 0x31, 0x22): 8,   # dark red
+    (0xE6, 0x4E, 0x35): 9,   # red
+
+    # Oranges
+    (0xB0, 0x4B, 0x05): 10,  # dark orange
+    (0xED, 0x79, 0x29): 11,  # orange
+
+    # Brown / yellow
+    (0x60, 0x36, 0x1D): 12,  # dark brown
+    (0xFD, 0xC4, 0x43): 13,  # yellow
+    (0xFB, 0xCA, 0x43): 13,  # asset yellow variant
+
+    # Greens
+    (0x32, 0x8C, 0x25): 14,  # dark green
+    (0x5D, 0xE3, 0x4A): 15,  # green
+}
 
 
 def load_map() -> dict:
@@ -46,26 +59,19 @@ def colour_distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
 
 
 def pixel_to_palette(pixel: tuple[int, int, int, int]) -> int:
-    """Convert one RGBA pixel to the nearest engine palette index."""
+    """Convert one RGBA pixel to a fixed engine palette index."""
     red, green, blue, alpha = pixel
 
     if alpha < 128:
         return 0
 
-    source_colour = (red, green, blue)
+    rgb = (red, green, blue)
 
-    best_index = 0
-    best_distance = colour_distance(source_colour, CHROMA_PALETTE[0])
+    if rgb in EXACT_COLOUR_MAP:
+        return EXACT_COLOUR_MAP[rgb]
 
-    for index, palette_colour in enumerate(CHROMA_PALETTE[1:], start=1):
-        distance = colour_distance(source_colour, palette_colour)
-
-        if distance < best_distance:
-            best_distance = distance
-            best_index = index
-
-    return best_index
-
+    print(f"Warning: unknown colour {rgb}; mapping to black.")
+    return 0
 
 def load_tilesets(map_data: dict) -> list[dict]:
     """Load tileset metadata from the Tiled map."""
