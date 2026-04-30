@@ -4,6 +4,9 @@ import json
 MAP_NAME = "room0"
 LAYER_NAME = "Entities"
 
+COIN_WIDTH = 8
+COIN_HEIGHT = 8
+
 MAP_JSON = Path("assets/maps/room0.tmj")
 OUTPUT_DIR = Path("build")
 
@@ -38,16 +41,57 @@ def get_property(obj: dict, name: str, default=0):
 def map_entity_type(type_name: str) -> str:
     type_name = type_name.strip()
 
-    if type_name == "door":
-        return "ENTITY_DOOR"
+    if type_name == "spawn":
+        return "ENTITY_SPAWN"
 
     if type_name == "key":
         return "ENTITY_KEY"
 
-    if type_name == "spawn":
-        return "ENTITY_SPAWN"
+    if type_name == "door":
+        return "ENTITY_DOOR"
+
+    if type_name == "coin":
+        return "ENTITY_COIN"
 
     return "ENTITY_UNKNOWN"
+
+
+def make_entity(obj: dict, entity_type: str, x: int, y: int, w: int, h: int) -> dict:
+    return {
+        "type": entity_type,
+        "x": x,
+        "y": y,
+        "w": w,
+        "h": h,
+        "key_id": int(get_property(obj, "key_id", 0)),
+        "locked": int(bool(get_property(obj, "locked", False))),
+        "sprite_gid": int(get_property(obj, "sprite_gid", 0)),
+        "closed_gid": int(get_property(obj, "closed_gid", 0)),
+        "opening_gid": int(get_property(obj, "opening_gid", 0)),
+        "open_gid": int(get_property(obj, "open_gid", 0)),
+        "value": int(get_property(obj, "value", 0)),
+    }
+
+
+def expand_coin_object(obj: dict, entities: list[dict]) -> None:
+    """Expand a wide coin object into individual 8x8 coin entities."""
+    x = int(obj.get("x", 0))
+    y = int(obj.get("y", 0))
+    width = int(obj.get("width", COIN_WIDTH))
+
+    coin_count = max(1, width // COIN_WIDTH)
+
+    for index in range(coin_count):
+        entities.append(
+            make_entity(
+                obj=obj,
+                entity_type="coin",
+                x=x + (index * COIN_WIDTH),
+                y=y,
+                w=COIN_WIDTH,
+                h=COIN_HEIGHT,
+            )
+        )
 
 
 def parse_objects(layer: dict) -> list[dict]:
@@ -59,20 +103,19 @@ def parse_objects(layer: dict) -> list[dict]:
         if not entity_type:
             continue
 
+        if entity_type == "coin":
+            expand_coin_object(obj, entities)
+            continue
+
         entities.append(
-            {
-                "type": entity_type,
-                "x": int(obj.get("x", 0)),
-                "y": int(obj.get("y", 0)),
-                "w": int(obj.get("width", 0)),
-                "h": int(obj.get("height", 0)),
-                "key_id": int(get_property(obj, "key_id", 0)),
-                "locked": int(bool(get_property(obj, "locked", False))),
-                "sprite_gid": int(get_property(obj, "sprite_gid", 0)),
-                "closed_gid": int(get_property(obj, "closed_gid", 0)),
-                "opening_gid": int(get_property(obj, "opening_gid", 0)),
-                "open_gid": int(get_property(obj, "open_gid", 0)),
-            }
+            make_entity(
+                obj=obj,
+                entity_type=entity_type,
+                x=int(obj.get("x", 0)),
+                y=int(obj.get("y", 0)),
+                w=int(obj.get("width", 0)),
+                h=int(obj.get("height", 0)),
+            )
         )
 
     return entities
@@ -90,7 +133,8 @@ def generate_header(entity_count: int) -> str:
         "  ENTITY_UNKNOWN,\n"
         "  ENTITY_SPAWN,\n"
         "  ENTITY_KEY,\n"
-        "  ENTITY_DOOR\n"
+        "  ENTITY_DOOR,\n"
+        "  ENTITY_COIN\n"
         "} Game1_EntityType;\n\n"
         "typedef struct {\n"
         "  Game1_EntityType type;\n"
@@ -104,6 +148,7 @@ def generate_header(entity_count: int) -> str:
         "  uint16_t closed_gid;\n"
         "  uint16_t opening_gid;\n"
         "  uint16_t open_gid;\n"
+        "  uint8_t value;\n"
         "} Game1_Entity;\n\n"
         f"extern const Game1_Entity {MAP_NAME}_entities[];\n"
         f"extern const uint16_t {MAP_NAME}_entity_count;\n\n"
@@ -129,7 +174,8 @@ def generate_source(entities: list[dict]) -> str:
             f"{entity['sprite_gid']}, "
             f"{entity['closed_gid']}, "
             f"{entity['opening_gid']}, "
-            f"{entity['open_gid']} "
+            f"{entity['open_gid']}, "
+            f"{entity['value']} "
             "},\n"
         )
 
