@@ -21,6 +21,7 @@ EXACT_COLOUR_MAP = {
     (0x82, 0x82, 0x82): 3,
     (0xB5, 0xB5, 0xB5): 4,
     (0xD9, 0xD9, 0xD9): 5,   # white
+    (0xDF, 0xDF, 0xDF): 5,   # asset near-white variant
 
     # Blues
     (0x2A, 0x45, 0x5A): 6,   # dark water blue
@@ -44,6 +45,14 @@ EXACT_COLOUR_MAP = {
     (0x5D, 0xE3, 0x4A): 15,  # green
 }
 
+MANUAL_EXPORT_GIDS = {
+    30717,  # idle/move/jump/death shared frame
+    30788,  # idle frame 2
+    30718,  # move frame 2
+    30731,  # jump frame 2
+    30801,  # death frame 2
+    30815,  # death frame 3
+}
 
 def load_map() -> dict:
     """Load the exported Tiled JSON map."""
@@ -232,6 +241,7 @@ def collect_export_gids(map_data: dict, animations: dict[int, list[int]]) -> lis
     """Collect every GID that must be exported to C."""
     gids = collect_layer_gids(map_data)
     gids.update(collect_object_sprite_gids(map_data))
+    gids.update(MANUAL_EXPORT_GIDS)
 
     # If an animated tile is used, all of its animation frames must also be exported.
     for base_gid, frame_gids in animations.items():

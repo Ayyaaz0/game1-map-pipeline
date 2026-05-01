@@ -387,6 +387,32 @@
                  "id":44
                 }],
          "tilewidth":8
+        }, 
+        {
+         "columns":14,
+         "firstgid":30465,
+         "image":"..\/Chroma-Noir-8x8\/Hero-Alts.png",
+         "imageheight":424,
+         "imagewidth":112,
+         "margin":0,
+         "name":"Hero-Alts",
+         "spacing":0,
+         "tilecount":742,
+         "tileheight":8,
+         "tiles":[
+                {
+                 "animation":[
+                        {
+                         "duration":210,
+                         "tileid":252
+                        }, 
+                        {
+                         "duration":210,
+                         "tileid":323
+                        }],
+                 "id":252
+                }],
+         "tilewidth":8
         }],
  "tilewidth":8,
  "type":"map",
