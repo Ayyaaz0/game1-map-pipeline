@@ -1,10 +1,10 @@
 from pathlib import Path
 import json
 
-MAP_NAME = "room0"
+MAP_NAME = "room1"
 LAYER_NAME = "MetaTile"
 
-MAP_JSON = Path("assets/maps/room0.tmj")
+MAP_JSON = Path("assets/maps/room1.tmj")
 OUTPUT_DIR = Path("build")
 HEADER_FILE = OUTPUT_DIR / f"{MAP_NAME}.h"
 SOURCE_FILE = OUTPUT_DIR / f"{MAP_NAME}.c"
