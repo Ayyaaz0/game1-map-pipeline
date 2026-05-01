@@ -3,72 +3,74 @@ import json
 
 from PIL import Image
 
-MAP_JSON = Path("assets/maps/room0.tmj")
+MAP_JSONS = [
+    Path("assets/maps/room0.tmj"),
+    Path("assets/maps/room1.tmj"),
+]
+
 OUTPUT_DIR = Path("build")
 MAP_NAME = "room0_tiles"
 
 EMPTY_TILE_ID = 0
 TILESET_DIR = Path("assets/tilesets/Chroma-Noir-8x8")
 
-# Engine palette index map.
-# These indices must match your Chroma palette order in LCD.c / LCD.h.
 EXACT_COLOUR_MAP = {
     # Greys
-    (0x0D, 0x0D, 0x0D): 0,   # black
+    (0x0D, 0x0D, 0x0D): 0,
     (0x38, 0x38, 0x38): 1,
     (0x4F, 0x4F, 0x4F): 2,
-    (0x53, 0x53, 0x53): 2,   # asset grey variant
+    (0x53, 0x53, 0x53): 2,
     (0x82, 0x82, 0x82): 3,
     (0xB5, 0xB5, 0xB5): 4,
-    (0xD9, 0xD9, 0xD9): 5,   # white
-    (0xDF, 0xDF, 0xDF): 5,   # asset near-white variant
+    (0xD9, 0xD9, 0xD9): 5,
+    (0xDF, 0xDF, 0xDF): 5,
 
     # Blues
-    (0x2A, 0x45, 0x5A): 6,   # dark water blue
-    (0x63, 0x9B, 0xFF): 7,   # water blue
+    (0x2A, 0x45, 0x5A): 6,
+    (0x63, 0x9B, 0xFF): 7,
 
-    # Reds
-    (0x90, 0x31, 0x22): 8,   # dark red
-    (0xE6, 0x4E, 0x35): 9,   # red
+    # Reds / pink variants
+    (0x90, 0x31, 0x22): 8,
+    (0xE6, 0x4E, 0x35): 9,
+    (0xF8, 0x73, 0xE4): 9,
 
     # Oranges
-    (0xB0, 0x4B, 0x05): 10,  # dark orange
-    (0xED, 0x79, 0x29): 11,  # orange
+    (0xB0, 0x4B, 0x05): 10,
+    (0xED, 0x79, 0x29): 11,
 
     # Brown / yellow
-    (0x60, 0x36, 0x1D): 12,  # dark brown
-    (0xFD, 0xC4, 0x43): 13,  # yellow
-    (0xFB, 0xCA, 0x43): 13,  # asset yellow variant
+    (0x60, 0x36, 0x1D): 12,
+    (0x69, 0x3D, 0x22): 12,
+    (0xFD, 0xC4, 0x43): 13,
+    (0xFB, 0xCA, 0x43): 13,
 
     # Greens
-    (0x32, 0x8C, 0x25): 14,  # dark green
-    (0x5D, 0xE3, 0x4A): 15,  # green
+    (0x32, 0x8C, 0x25): 14,
+    (0x5D, 0xE3, 0x4A): 15,
 }
 
 MANUAL_EXPORT_GIDS = {
-    30717,  # idle/move/jump/death shared frame
-    30788,  # idle frame 2
-    30718,  # move frame 2
-    30731,  # jump frame 2
-    30801,  # death frame 2
-    30815,  # death frame 3
+    30717,
+    30788,
+    30718,
+    30731,
+    30801,
+    30815,
 }
 
-def load_map() -> dict:
-    """Load the exported Tiled JSON map."""
-    if not MAP_JSON.exists():
-        raise FileNotFoundError(f"Map file not found: {MAP_JSON}")
 
-    return json.loads(MAP_JSON.read_text(encoding="utf-8"))
+def load_map_json(path: Path) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"Map file not found: {path}")
+
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def colour_distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
-    """Return squared RGB distance between two colours."""
-    return sum((a[i] - b[i]) ** 2 for i in range(3))
+def load_maps() -> list[dict]:
+    return [load_map_json(path) for path in MAP_JSONS]
 
 
 def pixel_to_palette(pixel: tuple[int, int, int, int]) -> int:
-    """Convert one RGBA pixel to a fixed engine palette index."""
     red, green, blue, alpha = pixel
 
     if alpha < 128:
@@ -82,8 +84,8 @@ def pixel_to_palette(pixel: tuple[int, int, int, int]) -> int:
     print(f"Warning: unknown colour {rgb}; mapping to black.")
     return 0
 
+
 def load_tilesets(map_data: dict) -> list[dict]:
-    """Load tileset metadata from the Tiled map."""
     tilesets: list[dict] = []
 
     for tileset in map_data["tilesets"]:
@@ -92,10 +94,10 @@ def load_tilesets(map_data: dict) -> list[dict]:
         tilesets.append(
             {
                 "name": tileset["name"],
-                "firstgid": tileset["firstgid"],
-                "columns": tileset["columns"],
-                "tilewidth": tileset["tilewidth"],
-                "tileheight": tileset["tileheight"],
+                "firstgid": int(tileset["firstgid"]),
+                "columns": int(tileset["columns"]),
+                "tilewidth": int(tileset["tilewidth"]),
+                "tileheight": int(tileset["tileheight"]),
                 "image": TILESET_DIR / image_name,
                 "tiles": tileset.get("tiles", []),
             }
@@ -104,8 +106,23 @@ def load_tilesets(map_data: dict) -> list[dict]:
     return sorted(tilesets, key=lambda item: item["firstgid"])
 
 
+def merge_tilesets(map_datas: list[dict]) -> list[dict]:
+    """
+    Keep every tileset instance from every map.
+
+    This intentionally keys by firstgid, not by name, because room0 and room1
+    may use different firstgid values for the same tileset image.
+    """
+    tilesets_by_firstgid: dict[int, dict] = {}
+
+    for map_data in map_datas:
+        for tileset in load_tilesets(map_data):
+            tilesets_by_firstgid[tileset["firstgid"]] = tileset
+
+    return sorted(tilesets_by_firstgid.values(), key=lambda item: item["firstgid"])
+
+
 def load_tileset_images(tilesets: list[dict]) -> dict[str, Image.Image]:
-    """Load all tileset PNGs referenced by the Tiled map."""
     images: dict[str, Image.Image] = {}
 
     for tileset in tilesets:
@@ -114,13 +131,14 @@ def load_tileset_images(tilesets: list[dict]) -> dict[str, Image.Image]:
         if not image_path.exists():
             raise FileNotFoundError(f"Missing tileset image: {image_path}")
 
-        images[tileset["name"]] = Image.open(image_path).convert("RGBA")
+        image_key = str(image_path)
+        if image_key not in images:
+            images[image_key] = Image.open(image_path).convert("RGBA")
 
     return images
 
 
 def find_tileset(gid: int, tilesets: list[dict]) -> dict:
-    """Find which tileset owns a global tile ID."""
     selected = None
 
     for tileset in tilesets:
@@ -140,7 +158,6 @@ def extract_tile(
     tilesets: list[dict],
     images: dict[str, Image.Image],
 ) -> dict:
-    """Extract one tile/sprite from its tileset image."""
     tileset = find_tileset(gid, tilesets)
 
     local_id = gid - tileset["firstgid"]
@@ -148,7 +165,7 @@ def extract_tile(
     tile_height = tileset["tileheight"]
     columns = tileset["columns"]
 
-    image = images[tileset["name"]]
+    image = images[str(tileset["image"])]
 
     x0 = (local_id % columns) * tile_width
     y0 = (local_id // columns) * tile_height
@@ -172,7 +189,6 @@ def extract_tile(
 
 
 def collect_layer_gids(map_data: dict) -> set[int]:
-    """Collect all tile GIDs used directly by tile layers."""
     gids: set[int] = set()
 
     for layer in map_data["layers"]:
@@ -181,13 +197,12 @@ def collect_layer_gids(map_data: dict) -> set[int]:
 
         for gid in layer.get("data", []):
             if gid != EMPTY_TILE_ID:
-                gids.add(gid)
+                gids.add(int(gid))
 
     return gids
 
 
 def collect_object_sprite_gids(map_data: dict) -> set[int]:
-    """Collect sprite GIDs referenced by object layer properties."""
     gids: set[int] = set()
 
     sprite_properties = {
@@ -216,34 +231,38 @@ def collect_object_sprite_gids(map_data: dict) -> set[int]:
     return gids
 
 
-def collect_animations(map_data: dict) -> dict[int, list[int]]:
-    """Collect Tiled tile animations as {base_gid: [frame_gids...]}."""
+def collect_animations(map_datas: list[dict]) -> dict[int, list[int]]:
     animations: dict[int, list[int]] = {}
 
-    for tileset in map_data["tilesets"]:
-        firstgid = tileset["firstgid"]
+    for map_data in map_datas:
+        for tileset in map_data["tilesets"]:
+            firstgid = int(tileset["firstgid"])
 
-        for tile in tileset.get("tiles", []):
-            if "animation" not in tile:
-                continue
+            for tile in tileset.get("tiles", []):
+                if "animation" not in tile:
+                    continue
 
-            base_gid = firstgid + tile["id"]
-            frame_gids = [
-                firstgid + frame["tileid"] for frame in tile["animation"]
-            ]
+                base_gid = firstgid + int(tile["id"])
+                frame_gids = [
+                    firstgid + int(frame["tileid"])
+                    for frame in tile["animation"]
+                ]
 
-            animations[base_gid] = frame_gids
+                animations[base_gid] = frame_gids
 
     return animations
 
 
-def collect_export_gids(map_data: dict, animations: dict[int, list[int]]) -> list[int]:
-    """Collect every GID that must be exported to C."""
-    gids = collect_layer_gids(map_data)
-    gids.update(collect_object_sprite_gids(map_data))
-    gids.update(MANUAL_EXPORT_GIDS)
+def collect_export_gids(
+    map_datas: list[dict],
+    animations: dict[int, list[int]],
+) -> list[int]:
+    gids: set[int] = set(MANUAL_EXPORT_GIDS)
 
-    # If an animated tile is used, all of its animation frames must also be exported.
+    for map_data in map_datas:
+        gids.update(collect_layer_gids(map_data))
+        gids.update(collect_object_sprite_gids(map_data))
+
     for base_gid, frame_gids in animations.items():
         if base_gid in gids:
             gids.update(frame_gids)
@@ -252,13 +271,12 @@ def collect_export_gids(map_data: dict, animations: dict[int, list[int]]) -> lis
 
 
 def format_pixels(tile: dict) -> str:
-    """Format one sprite's pixels as readable C array rows."""
     rows: list[str] = []
     pixels = tile["pixels"]
     width = tile["width"]
 
     for index in range(0, len(pixels), width):
-        row = pixels[index : index + width]
+        row = pixels[index:index + width]
         rows.append("  " + ", ".join(map(str, row)) + ",")
 
     return "\n".join(rows)
@@ -373,13 +391,13 @@ def generate_source(
 
 
 def main() -> None:
-    map_data = load_map()
+    map_datas = load_maps()
 
-    tilesets = load_tilesets(map_data)
+    tilesets = merge_tilesets(map_datas)
     images = load_tileset_images(tilesets)
 
-    animations = collect_animations(map_data)
-    tile_ids = collect_export_gids(map_data, animations)
+    animations = collect_animations(map_datas)
+    tile_ids = collect_export_gids(map_datas, animations)
 
     tile_data = {
         gid: extract_tile(gid, tilesets, images)
